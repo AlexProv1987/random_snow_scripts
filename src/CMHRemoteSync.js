@@ -13,8 +13,8 @@ CMHRemoteSync.prototype = {
 
     createPayloadArr: function(inputs, outputs) {
         outputs.payload = {
-            records: []
-        };
+			records: [],
+		};
         const records = this.getRecordWindowed(inputs);
         const fields = [...inputs.fields.split(','), ...this.AUTO_FIELDS.split(',')];
         while (records.next()) {
@@ -26,6 +26,7 @@ CMHRemoteSync.prototype = {
             }
             outputs.payload.records.push(tmp);
         }
+		outputs.payload = JSON.stringify(outputs.payload);
         outputs.offset = inputs.limit + 1;
         outputs.limit = inputs.limit + inputs.batch_size;
         outputs.batch_index = inputs.batch_index + 1;
@@ -113,7 +114,6 @@ CMHRemoteSync.prototype = {
         gr.orderBy(inputs.order_by);
         gr.query();
         if (gr.hasNext()) {
-            gs.log("ALEX HAD NEXT")
             return gr;
         }
     },
