@@ -13,8 +13,8 @@ CMHRemoteSync.prototype = {
 
     createPayloadArr: function(inputs, outputs) {
         outputs.payload = {
-			records: [],
-		};
+            records: [],
+        };
         const records = this.getRecordWindowed(inputs);
         const fields = [...inputs.fields.split(','), ...this.AUTO_FIELDS.split(',')];
         while (records.next()) {
@@ -26,21 +26,25 @@ CMHRemoteSync.prototype = {
             }
             outputs.payload.records.push(tmp);
         }
-		outputs.payload = JSON.stringify(outputs.payload);
-        outputs.offset = inputs.limit + 1;
+        outputs.payload = JSON.stringify(outputs.payload);
+        //todo - since we are wanting a hard copy including sys_id and just to account for source fields not matching target well go ahead and use the actual import set tables sys_transform_entries.
+        //outputs.payload = this.setPayloadToTransformMap(outputs.payload,inputs.transform_map);
+        outputs.offset = inputs.limit;
         outputs.limit = inputs.limit + inputs.batch_size;
         outputs.batch_index = inputs.batch_index + 1;
     },
 
     makePostRequest: function(inputs, outputs) {
         var request = new sn_ws.RESTMessageV2();
-        request.setEndpoint(`${inputs.base_url}api/now/table/${inputs.table}?sysparm_exclude_reference_link=true&sysparm_suppress_auto_sys_field=true`);
+        request.setEndpoint(`${inputs.base_url}${inputs.api_url}${inputs.query_params}`);
         request.setHttpMethod('POST');
+        //sys_auth_profile_basic or oauth
         request.setAuthenticationProfile(inputs.auth_type, inputs.credential);
         request.setRequestHeader("Accept", "application/json");
         request.setRequestHeader('Content-Type', 'application/json');
         request.setRequestBody(inputs.payload);
-        request.execute();
+        var response = request.execute();
+        //return response code as output here
     },
 
     getBatchVariables: function(inputs, outputs) {
@@ -51,47 +55,13 @@ CMHRemoteSync.prototype = {
         if (glideAggregate.next()) {
             outputs.total_records = parseInt(glideAggregate.getAggregate('COUNT'));
             outputs.batch_index = 1;
-            outputs.batch_size = gs.getProperty('scope_here.batch_size', 10);
+            outputs.batch_size = gs.getProperty('scope_here.batch_size', 100);
             outputs.limit = outputs.batch_size;
             outputs.offset = 0;
             outputs.last_batch = Math.ceil(outputs.total_records / outputs.batch_size);
         }
     },
 
-    //placeholder logic works but just ph for now
-    makeBatchPostReq: function(inputs, outputs) {
-        var totalRecords = 0;
-        var batchIdx = 1;
-        var batchSize = gs.getProperty('scope_placeholder.import_batch_size', 100);
-        var limit = batchSize;
-        var offSet = 0;
-        var lastBatch = null;
-
-        var usersAgg = new GlideAggregate('sys_user');
-        usersAgg.addActiveQuery();
-        usersAgg.addAggregate('COUNT');
-        usersAgg.query();
-        if (usersAgg.next()) {
-            totalRecords = parseInt(usersAgg.getAggregate('COUNT'));
-        }
-
-        lastBatch = Math.ceil(totalRecords / batchSize);
-        while (batchIdx <= lastBatch) {
-            var userRecords = new GlideRecord('sys_user');
-            userRecords.addActiveQuery();
-            userRecords.chooseWindow(offSet, limit);
-            userRecords.orderBy('user_name');
-            userRecords.query();
-            gs.print(userRecords.getRowCount());
-            var cnt = 0;
-            while (userRecords.next()) {
-                cnt += 1;
-            }
-            offSet = limit;
-            limit += batchSize;
-            batchIdx += 1;
-        }
-    },
 
     getFieldType: function(gr, field) {
         const element = gr.getElement(field);
@@ -116,6 +86,24 @@ CMHRemoteSync.prototype = {
         if (gr.hasNext()) {
             return gr;
         }
+    },
+
+    getTransformEntries: function(inputs, outputs) {
+        outputs.transform_map = [];
+        var gr = new GlideRecord('sys_transform_entry');
+        gr.addQuery('source_table', '=', inputs.source_table);
+        gr.query();
+        while (gr.next()) {
+            outputs.transform_map.push({
+                source_field: gr.getValue('source_field'),
+                target_field: gr.getValue('target_field'),
+            });
+        }
+        outputs.transform_map = JSON.stringify(outputs.transform_map);
+    },
+
+    setPayloadToTransformMap: function(map, outputs) {
+        //..to do called from createbatchpayload
     },
 
 
