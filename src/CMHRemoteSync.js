@@ -19,16 +19,20 @@ CMHRemoteSync.prototype = {
         const fields = [...inputs.fields.split(','), ...this.AUTO_FIELDS.split(',')];
         while (records.next()) {
             const tmp = {};
-            for (let field of fields) {
+            fields.forEach((field, idx) => {
                 if (records.isValidField(field)) {
                     tmp[field] = records.getValue(field);
                 }
-            }
+            });
             outputs.payload.records.push(tmp);
         }
-        outputs.payload = JSON.stringify(outputs.payload);
-        //todo - since we are wanting a hard copy including sys_id and just to account for source fields not matching target well go ahead and use the actual import set tables sys_transform_entries.
-        //outputs.payload = this.setPayloadToTransformMap(outputs.payload,inputs.transform_map);
+
+        if (inputs.transform_map) {
+            this.setPayloadToTransformMap(outputs, JSON.parse(inputs.transform_map));
+        } else {
+            outputs.payload = JSON.stringify(outputs.payload);
+        }
+
         outputs.offset = inputs.limit;
         outputs.limit = inputs.limit + inputs.batch_size;
         outputs.batch_index = inputs.batch_index + 1;
@@ -44,7 +48,8 @@ CMHRemoteSync.prototype = {
         request.setRequestHeader('Content-Type', 'application/json');
         request.setRequestBody(inputs.payload);
         var response = request.execute();
-        //return response code as output here
+        //return this
+        gs.log("ALEX RESP CODE " + response.getStatusCode());
     },
 
     getBatchVariables: function(inputs, outputs) {
@@ -55,7 +60,7 @@ CMHRemoteSync.prototype = {
         if (glideAggregate.next()) {
             outputs.total_records = parseInt(glideAggregate.getAggregate('COUNT'));
             outputs.batch_index = 1;
-            outputs.batch_size = gs.getProperty('scope_here.batch_size', 100);
+            outputs.batch_size = gs.getProperty('cmh.remote.sync.batch_size', 100);
             outputs.limit = outputs.batch_size;
             outputs.offset = 0;
             outputs.last_batch = Math.ceil(outputs.total_records / outputs.batch_size);
@@ -102,17 +107,41 @@ CMHRemoteSync.prototype = {
         outputs.transform_map = JSON.stringify(outputs.transform_map);
     },
 
-    setPayloadToTransformMap: function(map, outputs) {
-        //..to do called from createbatchpayload
+    setPayloadToTransformMap: function(outputs, map) {
+        const newPayload = {
+            records: [],
+        };
+		//this should never happen but still edge case
+        if (outputs.payload?.records?.length === 0) {
+            return;
+        }
+		//this should be an array of objects with same props - grab first idx keys to avoid looped call
+        const keys = Object.keys(outputs.payload.records[0]);
+        outputs.payload.records.forEach((item, idx) => {
+            keys.forEach((key, index) => {
+				const mapObj = map.find(obj => obj.target_field === key);
+				if(mapObj){
+					if(mapObj.source_field !== key){
+						item[mapObj.source_field] = item[key];
+						delete item[key];
+					}
+				}else{
+					//optional we either let the api handle this or clean the payload of items not accepted
+					//delete item[key];
+				}
+            });
+            newPayload.records.push(item);
+        });
+        outputs.payload = JSON.stringify(newPayload);
     },
 
 
     setFields: function(gr, fields, outputs) {
-        for (let field of fields) {
+        fields.forEach((field, idx) => {
             if (gr.isValidField(field)) {
                 outputs.payload[field] = gr.getValue(field);
             }
-        }
+        });
     },
 
     type: 'CMHRemoteSync'
