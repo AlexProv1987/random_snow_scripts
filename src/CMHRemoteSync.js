@@ -48,8 +48,7 @@ CMHRemoteSync.prototype = {
         request.setRequestHeader('Content-Type', 'application/json');
         request.setRequestBody(inputs.payload);
         var response = request.execute();
-        //return this
-        gs.log("ALEX RESP CODE " + response.getStatusCode());
+        outputs.status = response.getStatusCode();
     },
 
     getBatchVariables: function(inputs, outputs) {
@@ -66,7 +65,6 @@ CMHRemoteSync.prototype = {
             outputs.last_batch = Math.ceil(outputs.total_records / outputs.batch_size);
         }
     },
-
 
     getFieldType: function(gr, field) {
         const element = gr.getElement(field);
@@ -134,7 +132,6 @@ CMHRemoteSync.prototype = {
         });
         outputs.payload = JSON.stringify(newPayload);
     },
-
 
     setFields: function(gr, fields, outputs) {
         fields.forEach((field, idx) => {
