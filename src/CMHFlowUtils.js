@@ -1,3 +1,4 @@
+//wrapper for people who dont wanna learn
 var CMHFlowUtils = Class.create();
 CMHFlowUtils.prototype = {
 
