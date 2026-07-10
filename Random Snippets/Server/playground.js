@@ -14,61 +14,66 @@ var outputs = {};
 //flow handler cls
 
 //test in memory table
-var recordTable = {}
+var recordTable = {};
 var test = {};
 
 function process(inputs, outputs) {
+    //vars
+    var beginOfLastMonth = new GlideDate(gs.beginningOfLastMonth());
+    gs.print(beginOfLastMonth);
     //printy print
     gs.print(inputs.db_view);
     gs.print(inputs.metric_definition.getUniqueValue());
     gs.print(inputs.subscription_entitlement.getUniqueValue());
     gs.print(inputs.due_from);
     gs.print(inputs.excluded_users_property);
-    //end printy print
 
     var excludedUsers = gs.getProperty(inputs.excluded_users_property, []); //this will be a property, comma sepp list of sys_ids and well have a query condition defined as well.
     var dueDate = calculateDueDate(inputs.due_from);
     var records = new GlideAggregate(inputs.db_view);
-    //records.addEncodedQuery('minstance_sys_id=NULL');
-    //57ad67f7c3973e108b455385e00131c3 9f308639878e7910949e65bd0ebb35ee
-    var condition = records.addQuery('user_sys_id', '=', '9f308639878e7910949e65bd0ebb35ee');
-    //records.addQuery('user_sys_id','=','9f308639878e7910949e65bd0ebb35ee');
-    condition.addOrCondition('user_sys_id', '=', '8393d6dfdbde005809b39017db9619b1');
-    //records.addQuery('user_sys_id','=','57ad67f7c3973e108b455385e00131c3');
-    //records.addEncodedQuery('minstance_sys_idEMPTYSTRING^NQminstance_sys_created_on<javascript:gs.beginningOfLastMonth()');
-    //records.addEncodedQuery('minstance_sys_id=NULL');
-    //need query condition here to exclude things maybe along with the property.
-    //records.addAggregate('COUNT(DISTINCT', 'minstance_sys_id');
+    // var condition = records.addQuery('user_sys_id', '=', '9f308639878e7910949e65bd0ebb35ee');
+    // condition.addOrCondition('user_sys_id', '=', '8393d6dfdbde005809b39017db9619b1');
+    // condition.addOrCondition('user_sys_id', '=', '1ba16d1333fef250d8b0d4e45d5c7b2d');
+    //grmember_sys_created_onONLast month@javascript:gs.beginningOfLastMonth()@javascript:gs.endOfLastMonth()
     records.groupBy('user_sys_id');
-    records.orderByDesc('minstance_sys_created_on');
-    //records.groupBy('minstance_sys_id');
-    //records.groupBy('user_first_name');
-    //records.groupBy('user_last_name');
-    //records.groupBy('minstance_sys_created_on');
-    //test
-    //records.setLimit(500);
-    //end test
+    records.addAggregate('MAX', 'minstance_sys_created_on');
     records.query();
 
     while (records.next()) {
-
-        //does minstance exist? if yes -> look at those
-        //gs.print(records.getAggregate('COUNT'));
         var userSysId = records.getValue('user_sys_id');
-        // gs.print(userSysId + ' ' + records.getValue('user_first_name') + ' ' + records.getValue('user_last_name') + ' ' + records.getValue('minstance_sys_created_on'));
+        //gs.print(userSysId + ' ' + records.getValue('user_first_name') + ' ' + records.getValue('user_last_name') + ' ' + records.getValue('minstance_sys_created_on'));
+        //gs.info('USERID' + userSysId + ' ' + 'MAX: ' + records.getAggregate('MAX', 'minstance_sys_created_on'));
         //well allow further exlcusion outside of query if desired.
-        if (!excludedUsers.includes(userSysId)) {
-
-            if (test.hasOwnProperty(userSysId)) {
-                //gs.print('youre dumb')
-                test[userSysId].push(records.getValue('minstance_sys_created_on'));
-                //gs.print(test[userSysId])
-            } else {
-                //gs.print('kys')
-                test[userSysId] = [records.getValue('minstance_sys_created_on')];
+        // if (!excludedUsers.includes(userSysId)) {
+        var aggregate = records.getAggregate('MAX', 'minstance_sys_created_on');
+        if (aggregate) {
+            var createdOn = new GlideDateTime(aggregate);
+            if (createdOn < beginOfLastMonth) {
+                //     //insert records here - this will be its own fnc
+                //     recordTable[userSysId] = {
+                //         'user': userSysId,
+                //         'assignment_group': null, //sys_user_group ref - read only
+                //         'assigned_to': null, //sys_user ref
+                //         'metric_definition': inputs.metric_definition.getUniqueValue(), //read only
+                //         'subscription': inputs.subscription_entitlement.getUniqueValue(), //read only
+                //         'sys_created_on': 'today dt_tm', //this is a default field
+                //         'revoked': null, //choices Yes, No, include none
+                //         'reason': 'text field required when selecting yes or no on revoked',
+                //         'reviewed_by': null, //sys_user ref- read only
+                //         'reviewed_at': null, //dt_tm - read only
+                //         'due_date': dueDate, //dt_tm - read only // end of next month how do?
+                //         'active': true, // read only
+                //     };
             }
-
-            // //insert records here
+        } else {
+			var gr = new GlideRecord('x_cmhac_cmh_lice_0_license_management_record');
+			gr.initialize();
+			gr.setValue('subscription',inputs.subscription_entitlement.getUniqueValue());
+			gr.setValue('due_date',gs.endOfMonth()); //system property
+			gr.setValue('metric_definition',inputs.metric_definition.getUniqueValue());
+			gr.setValue('user',userSysId);
+			gr.insert();
+            //insert records here - this will be its own fnc
             // recordTable[userSysId] = {
             //     'user': userSysId,
             //     'assignment_group': null, //sys_user_group ref - read only
@@ -80,12 +85,14 @@ function process(inputs, outputs) {
             //     'reason': 'text field required when selecting yes or no on revoked',
             //     'reviewed_by': null, //sys_user ref- read only
             //     'reviewed_at': null, //dt_tm - read only
-            //     'due_date': dueDate, //dt_tm - read only
+            //     'due_date': dueDate, //dt_tm - read only // end of next month how do?
             //     'active': true, // read only
             // };
         }
+
     }
 }
+
 
 
 
@@ -101,40 +108,30 @@ function getRecord(table, id) {
     gr.get(id);
     return gr;
 }
-//weejus
-//7Ovqp&^ZNP4F@j@x.R$*A^11Y9)o
 
 process(inputs, outputs);
-
 testEval();
 //gs.print(JSON.stringify(test));
 
-function testEval(){
-	var lastMonth = new GlideDate(gs.beginningOfThisMonth());
-	var keys = Object.keys(test);
-	for(var i = 0; i < keys.length; i++){
-		var arr = test[keys[i]];
-		if(Array.isArray(arr) && arr.length >=1){
-			var theDate = new GlideDateTime(arr[0]);
-			if(theDate < lastMonth){
-				gs.log(keys[i])
-				gs.log('William smells like cheetos and feet.');
-			}
-		}
-	}
+function testEval() {
+    var beginOfThisMonth = new GlideDate(gs.beginningOfThisMonth());
+    var keys = Object.keys(test);
+    for (var i = 0; i < keys.length; i++) {
+        var arr = test[keys[i]];
+        if (Array.isArray(arr) && arr.length >= 1) {
+            var theDate = new GlideDateTime(arr[0]);
+            if (theDate < lastMonth) {
+                gs.log(keys[i]);
+                gs.log('William smells like cheetos and feet.');
+            }
+        }
+    }
 }
-// gs.print(JSON.stringify(recordTable));
+//gs.print(JSON.stringify(recordTable));
+
+gs.print(Object.keys(recordTable).length);
 // gs.print(JSON.stringify(outputs));
 
-//business rules
-
-//before
-function updateWhenReviewed() {
-    //if revoked changes and revoked is not none
-    //set reviewed_by gs.currentuser
-    //set reviewed at - today
-    //set active - false
-}
 
 //notifications -- insert
 // send to user with whatever details
