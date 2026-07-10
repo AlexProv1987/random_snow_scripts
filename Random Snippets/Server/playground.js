@@ -105,7 +105,7 @@ function getRecord(table, id) {
 //7Ovqp&^ZNP4F@j@x.R$*A^11Y9)o
 
 process(inputs, outputs);
-gs.print("GOD DAMNIT")
+
 testEval();
 //gs.print(JSON.stringify(test));
 
